@@ -2,6 +2,7 @@ package br.ufg.aps.autenticacao.controle;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +26,12 @@ public class TratadorExcecoes {
     static final String MENSAGEM_400 = "Requisição inválida.";
     static final String MENSAGEM_500 = "Erro interno. Tente novamente mais tarde.";
 
+    /**
+     * Desafio do 401 (RFC 9110, seção 15.5.2). As credenciais vão no corpo JSON, então o
+     * esquema é próprio da aplicação; com "Basic", o navegador abriria a janela nativa de login.
+     */
+    static final String DESAFIO_401 = "Credenciais realm=\"aplicacao.example\"";
+
     private static final Logger log = LoggerFactory.getLogger(TratadorExcecoes.class);
 
     /** JSON malformado ou corpo ausente. */
@@ -39,10 +46,13 @@ public class TratadorExcecoes {
         return resposta(HttpStatus.BAD_REQUEST, MENSAGEM_400);
     }
 
-    /** Usuário inexistente ou senha incorreta: mesma resposta nos dois casos. */
+    /** Usuário inexistente ou senha incorreta: mesma resposta nos dois casos (RNF03). */
     @ExceptionHandler(FalhaAutenticacaoException.class)
     public ResponseEntity<RespostaErro> falhaAutenticacao(FalhaAutenticacaoException e) {
-        return resposta(HttpStatus.UNAUTHORIZED, MENSAGEM_401);
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, DESAFIO_401)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new RespostaErro(MENSAGEM_401));
     }
 
     /** Qualquer outra falha, inclusive DataAccessException (SGBD indisponível). */

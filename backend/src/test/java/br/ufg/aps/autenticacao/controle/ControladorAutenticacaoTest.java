@@ -1,6 +1,7 @@
 package br.ufg.aps.autenticacao.controle;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
@@ -49,6 +50,7 @@ class ControladorAutenticacaoTest {
     private static final String CORPO_401 = "{\"mensagem\": \"E-mail ou senha inválidos.\"}";
     private static final String CORPO_400 = "{\"mensagem\": \"Requisição inválida.\"}";
     private static final String CORPO_500 = "{\"mensagem\": \"Erro interno. Tente novamente mais tarde.\"}";
+    private static final String DESAFIO_401 = "Credenciais realm=\"aplicacao.example\"";
 
     private static String hashMaria;
 
@@ -98,6 +100,7 @@ class ControladorAutenticacaoTest {
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(credenciais(EMAIL, "errada")))
                 .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", DESAFIO_401))
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(content().json(CORPO_401, JsonCompareMode.STRICT))
                 .andExpect(header().doesNotExist("Set-Cookie"));
@@ -117,6 +120,9 @@ class ControladorAutenticacaoTest {
                 .isEqualTo(senhaIncorreta.getResponse().getContentAsString());
         assertThat(inexistente.getResponse().getHeaderNames())
                 .containsExactlyInAnyOrderElementsOf(senhaIncorreta.getResponse().getHeaderNames());
+        assertThat(inexistente.getResponse().getHeader("WWW-Authenticate"))
+                .isEqualTo(senhaIncorreta.getResponse().getHeader("WWW-Authenticate"))
+                .isEqualTo(DESAFIO_401);
     }
 
     // Caso 5 (RF01.1; FA1)
@@ -207,9 +213,20 @@ class ControladorAutenticacaoTest {
     void metodoOuContentTypeNaoSuportadosUsamOCorpoDoContrato() throws Exception {
         mockMvc.perform(get(URL))
                 .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Allow", containsString("POST")))
                 .andExpect(content().json(CORPO_400, JsonCompareMode.STRICT));
         mockMvc.perform(post(URL).contentType(MediaType.TEXT_PLAIN).content("email=a&senha=b"))
                 .andExpect(status().isUnsupportedMediaType())
+                .andExpect(content().json(CORPO_400, JsonCompareMode.STRICT));
+
+        verifyNoInteractions(repositorio);
+    }
+
+    @Test
+    void rotaInexistenteDevolve404ComOCorpoDoContrato() throws Exception {
+        mockMvc.perform(get("/api/inexistente"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(content().json(CORPO_400, JsonCompareMode.STRICT));
 
         verifyNoInteractions(repositorio);

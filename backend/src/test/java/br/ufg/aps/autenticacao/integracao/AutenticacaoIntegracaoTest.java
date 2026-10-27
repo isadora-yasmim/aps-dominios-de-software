@@ -92,6 +92,9 @@ class AutenticacaoIntegracaoTest {
         assertThat(inexistente.getResponse().getContentAsString())
                 .isEqualTo(senhaIncorreta.getResponse().getContentAsString())
                 .isEqualTo("{\"mensagem\":\"E-mail ou senha inválidos.\"}");
+        assertThat(inexistente.getResponse().getHeader("WWW-Authenticate"))
+                .isEqualTo(senhaIncorreta.getResponse().getHeader("WWW-Authenticate"))
+                .isEqualTo("Credenciais realm=\"aplicacao.example\"");
     }
 
     // RNF05: a consulta é parametrizada, então o texto chega ao SGBD como valor literal.

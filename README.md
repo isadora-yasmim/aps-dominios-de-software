@@ -106,7 +106,8 @@ curl -k $R -i -X POST $API -H 'Content-Type: application/json' \
   -d '{"email": "maria@aplicacao.example", "senha": "S3nh@Forte"}'
 # {"id":1,"email":"maria@aplicacao.example","nome":"Maria Souza"}
 
-# 401 Unauthorized (senha incorreta; o corpo é o mesmo para e-mail inexistente)
+# 401 Unauthorized (senha incorreta; cabeçalho e corpo iguais para e-mail inexistente)
+# WWW-Authenticate: Credenciais realm="aplicacao.example"
 curl -k $R -i -X POST $API -H 'Content-Type: application/json' \
   -d '{"email": "maria@aplicacao.example", "senha": "errada"}'
 # {"mensagem":"E-mail ou senha inválidos."}
@@ -133,7 +134,7 @@ O teste de integração (`AutenticacaoIntegracaoTest`) sobe um PostgreSQL 18 com
 | # | Caso exigido | Teste |
 |---|---|---|
 | 1 | Credenciais válidas → 200 só com `id`, `email`, `nome` | `ControladorAutenticacaoTest.credenciaisValidasDevolvem200SoComIdEmailENome`; `AutenticacaoIntegracaoTest.usuarioDoSeedAutenticaComASenhaCorreta` |
-| 2 | Senha incorreta → 401 | `ControladorAutenticacaoTest.senhaIncorretaDevolve401ComMensagemGenerica` |
+| 2 | Senha incorreta → 401 com `WWW-Authenticate` | `ControladorAutenticacaoTest.senhaIncorretaDevolve401ComMensagemGenerica` |
 | 3 | Inexistente → 401 com corpo idêntico (RNF03) | `ControladorAutenticacaoTest.usuarioInexistenteDevolveCorpoIdenticoAoDeSenhaIncorreta`; `AutenticacaoIntegracaoTest.senhaIncorretaEUsuarioInexistenteTemRespostasIdenticas` |
 | 4 | Inexistente → verificação contra o hash fictício (RNF06) | `ServicoAutenticacaoTest.usuarioInexistenteVerificaASenhaContraOHashFicticio`; `VerificadorSenhaTest.verificacaoDeUsuarioInexistenteUsaOHashFicticio` |
 | 5 | Requisição inválida → 400 sem chamar o repositório (FA1) | `ControladorAutenticacaoTest.requisicaoInvalidaDevolve400SemConsultarORepositorio` (13 variações) |
@@ -142,7 +143,7 @@ O teste de integração (`AutenticacaoIntegracaoTest`) sobe um PostgreSQL 18 com
 | 8 | Injeção de SQL no e-mail → 400 ou 401, nunca 200 (RNF05) | `ControladorAutenticacaoTest.tentativaDeInjecaoNuncaAutentica`, `...emailComInjecaoChegaAoRepositorioComoValorLiteral`; `AutenticacaoIntegracaoTest.injecaoDeSqlNoEmailNaoEncontraNenhumUsuario` |
 | 9 | Hash Argon2id; verificador aceita a correta e rejeita a incorreta (RNF02) | `VerificadorSenhaTest.hashGeradoEArgon2idEVerificadorReconheceSoASenhaCorreta`; `AutenticacaoIntegracaoTest.hashesArmazenadosSaoArgon2id` |
 
-Testes adicionais: `usuarioDeBancoDaAplicacaoNaoAlteraDados` (o usuário de banco não consegue `UPDATE`/`INSERT`) e `metodoOuContentTypeNaoSuportadosUsamOCorpoDoContrato`.
+Testes adicionais: `usuarioDeBancoDaAplicacaoNaoAlteraDados` (o usuário de banco não consegue `UPDATE`/`INSERT`) `metodoOuContentTypeNaoSuportadosUsamOCorpoDoContrato` (inclui o cabeçalho `Allow` do 405) e `rotaInexistenteDevolve404ComOCorpoDoContrato`.
 
 ## Gerar o hash de uma senha (fora da API)
 
@@ -186,7 +187,7 @@ docker compose exec -u postgres postgres psql -d autenticacao
 | **RF01.4** Decisão | Se a senha confere, devolve 200 com id, e-mail e nome; senão, lança `FalhaAutenticacaoException`, convertida em 401. | `ServicoAutenticacao`; `UsuarioAutenticado`; `FalhaAutenticacaoException`; `TratadorExcecoes` |
 | **RNF01** | Requisito da camada de apresentação: página de login simples e responsiva, mensagens para cada status, servida por HTTPS (TLS 1.3, HSTS) pelo Nginx. | `frontend/index.html`, `estilo.css`, `app.js`; `nginx/nginx.conf` |
 | **RNF02** Hash de senha | Argon2id (m=19 MiB, t=2, p=1) via `spring-security-crypto` + Bouncy Castle. O seed só contém hashes. | `ConfiguracaoSenha`; `VerificadorSenha`; `GeradorHash`; `banco/seed.sql` |
-| **RNF03** Mensagem genérica | Uma única exceção para "não existe" e "senha incorreta", e uma única resposta 401. | `FalhaAutenticacaoException`; `TratadorExcecoes` |
+| **RNF03** Mensagem genérica | Uma única exceção para "não existe" e "senha incorreta", e uma única resposta 401, com o mesmo cabeçalho `WWW-Authenticate: Credenciais realm="aplicacao.example"`. | `FalhaAutenticacaoException`; `TratadorExcecoes` |
 | **RNF04** Sem senha/hash nas respostas | O DTO de sucesso tem só 3 campos. `Usuario` nunca é serializado e o `toString` oculta o hash. O 500 é genérico e o `server.error.include-*` está desligado. | `UsuarioAutenticado`; `Usuario`; `TratadorExcecoes`; `application.properties` |
 | **RNF05** SQL seguro | Consulta parametrizada única via `JdbcTemplate`. O usuário de banco tem só leitura e o SGBD só aceita a aplicação. | `RepositorioUsuario`; `banco/permissoes.sql`; `banco/pg_hba.conf` |
 | **RNF06** Tempo semelhante | Se o usuário não existe, a senha é verificada contra um hash fictício gerado na inicialização (mesmo algoritmo e parâmetros) e o resultado é descartado. | `VerificadorSenha.verificarContraHashFicticio`; `ServicoAutenticacao` |
@@ -199,19 +200,20 @@ docker compose exec -u postgres postgres psql -d autenticacao
 4. **Formato de e-mail:** vale o `@Email` padrão do Hibernate Validator, que aceita, por exemplo, `a@b` sem TLD. Não há limite de tamanho além do que o banco já impõe.
 5. **Campos extras no JSON** são ignorados (padrão do Jackson no Spring Boot).
 6. **Erros do próprio Spring MVC** (método diferente de POST → 405, Content-Type diferente de JSON → 415, rota `/api/...` inexistente → 404): mantêm o status, com o corpo `{"mensagem": "Requisição inválida."}` e sem consultar o SGBD. Assim, nenhum erro da API cai na rota `/error`.
-7. **Log do 500:** o stack trace vai só para o log do servidor; a resposta é genérica.
-8. **Somente leitura reforçada:** `spring.datasource.hikari.read-only=true` e `spring.sql.init.mode=never` (a aplicação nunca executa scripts no banco).
-9. **Gerador de hash:** classe `GeradorHash` no mesmo projeto Maven (reaproveita `ConfiguracaoSenha`, garantindo os mesmos parâmetros), executada pelo script `gerar-hash.sh` a partir do jar, sem iniciar o Spring.
-10. **Nomes do banco:** banco `autenticacao`, usuário `app_autenticacao`. As senhas ficam no `.env` (não versionado). `permissoes.sql` lê a senha da aplicação com `\getenv DB_SENHA_APP`.
-11. **Acesso administrativo:** além da regra da aplicação, o `pg_hba.conf` tem `local all postgres peer` (socket Unix dentro do contêiner, sem rede), necessária para os scripts de inicialização e para a administração. Todas as outras conexões são `reject`. O `USAGE` no esquema `public` vem do padrão do PostgreSQL 15+ para `PUBLIC`; a aplicação recebe explicitamente só `CONNECT` e `SELECT`.
-12. **Endereços fixos** na rede interna `172.28.0.0/24` (app `.10`, postgres `.20`), para que `listen_addresses` e `pg_hba.conf` possam nomear endereços. Se a sub-rede conflitar com outra rede local, ajuste `docker-compose.yml`, `pg_hba.conf` e `DB_URL`.
-13. **Portas do host configuráveis** (`PORTA_HTTP`, `PORTA_HTTPS`; padrão 80 e 443). Dentro do contêiner o Nginx continua em 80 e 443.
-14. **Certificado de desenvolvimento:** autoassinado, chave EC P-256, validade de 365 dias, com SAN `DNS:aplicacao.example`.
-15. **`nginx.conf`** contém apenas os blocos `server` especificados e é montado como `/etc/nginx/conf.d/default.conf`.
-16. **Imagem do backend:** construída sem rodar os testes (`-DskipTests`), pois o teste de integração precisa de Docker. Os testes rodam com `mvn test`. O processo roda como usuário sem privilégios.
-17. **Página de login:** mantém a validação nativa do navegador (`required`, `type="email"`). O formulário usa `method="post"` para que a senha nunca vá para a URL, mesmo sem JavaScript. Para 401, mostra a mensagem recebida; para 400, "Verifique o e-mail e a senha informados."; para 500, 502, 504, qualquer outro status ou erro de rede, "Serviço indisponível no momento. Tente novamente mais tarde.". Nada é guardado em `localStorage`, `sessionStorage` ou cookies.
-18. **Seed** com 3 usuários fictícios no domínio `aplicacao.example`. Os ids são gerados pelo `BIGSERIAL` (Maria recebe `id` 1).
-19. **Dados do SGBD** ficam no volume anônimo do contêiner. `docker compose down -v` recria o banco a partir dos scripts.
-20. **502/504 em desenvolvimento:** o Nginx compartilha a pilha de rede do contêiner `app`, cujo processo principal é o Java. Parar o Spring Boot (`docker compose stop app`) também desliga as portas publicadas, então do host a conexão simplesmente falha. Para ver o 502, chame o Nginx por dentro do contêiner dele:
+7. **Cabeçalho do 401:** a RFC 9110 exige `WWW-Authenticate` em toda resposta 401. Como as credenciais vão no corpo JSON, o desafio usa um esquema próprio, `Credenciais realm="aplicacao.example"`; o esquema `Basic` faria o navegador abrir a janela nativa de usuário e senha.
+8. **Log do 500:** o stack trace vai só para o log do servidor; a resposta é genérica.
+9. **Somente leitura reforçada:** `spring.datasource.hikari.read-only=true` e `spring.sql.init.mode=never` (a aplicação nunca executa scripts no banco).
+10. **Gerador de hash:** classe `GeradorHash` no mesmo projeto Maven (reaproveita `ConfiguracaoSenha`, garantindo os mesmos parâmetros), executada pelo script `gerar-hash.sh` a partir do jar, sem iniciar o Spring.
+11. **Nomes do banco:** banco `autenticacao`, usuário `app_autenticacao`. As senhas ficam no `.env` (não versionado). `permissoes.sql` lê a senha da aplicação com `\getenv DB_SENHA_APP`.
+12. **Acesso administrativo:** além da regra da aplicação, o `pg_hba.conf` tem `local all postgres peer` (socket Unix dentro do contêiner, sem rede), necessária para os scripts de inicialização e para a administração. Todas as outras conexões são `reject`. O `USAGE` no esquema `public` vem do padrão do PostgreSQL 15+ para `PUBLIC`; a aplicação recebe explicitamente só `CONNECT` e `SELECT`.
+13. **Endereços fixos** na rede interna `172.28.0.0/24` (app `.10`, postgres `.20`), para que `listen_addresses` e `pg_hba.conf` possam nomear endereços. Se a sub-rede conflitar com outra rede local, ajuste `docker-compose.yml`, `pg_hba.conf` e `DB_URL`.
+14. **Portas do host configuráveis** (`PORTA_HTTP`, `PORTA_HTTPS`; padrão 80 e 443). Dentro do contêiner o Nginx continua em 80 e 443.
+15. **Certificado de desenvolvimento:** autoassinado, chave EC P-256, validade de 365 dias, com SAN `DNS:aplicacao.example`.
+16. **`nginx.conf`** contém apenas os blocos `server` especificados e é montado como `/etc/nginx/conf.d/default.conf`.
+17. **Imagem do backend:** construída sem rodar os testes (`-DskipTests`), pois o teste de integração precisa de Docker. Os testes rodam com `mvn test`. O processo roda como usuário sem privilégios.
+18. **Página de login:** mantém a validação nativa do navegador (`required`, `type="email"`). O formulário usa `method="post"` para que a senha nunca vá para a URL, mesmo sem JavaScript. Para 401, mostra a mensagem recebida; para 400, "Verifique o e-mail e a senha informados."; para 500, 502, 504, qualquer outro status ou erro de rede, "Serviço indisponível no momento. Tente novamente mais tarde.". Nada é guardado em `localStorage`, `sessionStorage` ou cookies.
+19. **Seed** com 3 usuários fictícios no domínio `aplicacao.example`. Os ids são gerados pelo `BIGSERIAL` (Maria recebe `id` 1).
+20. **Dados do SGBD** ficam no volume anônimo do contêiner. `docker compose down -v` recria o banco a partir dos scripts.
+21. **502/504 em desenvolvimento:** o Nginx compartilha a pilha de rede do contêiner `app`, cujo processo principal é o Java. Parar o Spring Boot (`docker compose stop app`) também desliga as portas publicadas, então do host a conexão simplesmente falha. Para ver o 502, chame o Nginx por dentro do contêiner dele:
     `docker compose exec nginx wget -S -O - --no-check-certificate --header='Host: aplicacao.example' --header='Content-Type: application/json' --post-data='{}' https://127.0.0.1/api/autenticacao` → `502 Bad Gateway`.
     Para voltar ao normal: `docker compose up -d --force-recreate`.
