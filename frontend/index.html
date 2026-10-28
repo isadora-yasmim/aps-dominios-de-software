@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Entrar</title>
+    <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+    <main class="cartao">
+        <h1>Entrar</h1>
+
+        <!-- method="post": mesmo sem JavaScript, a senha nunca vai para a URL. -->
+        <form id="formulario-login" method="post" action="#">
+            <label for="email">E-mail</label>
+            <input id="email" name="email" type="email" autocomplete="username" required>
+
+            <label for="senha">Senha</label>
+            <input id="senha" name="senha" type="password" autocomplete="current-password" required>
+
+            <button id="botao-entrar" type="submit">Entrar</button>
+        </form>
+
+        <div id="resultado" class="resultado" role="status" aria-live="polite" hidden></div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

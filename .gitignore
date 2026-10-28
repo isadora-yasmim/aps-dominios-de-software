@@ -1,0 +1,6 @@
+backend/target/
+nginx/tls/
+.env
+.idea/
+.vscode/
+*.iml

@@ -1,0 +1,65 @@
+# Topologia de desenvolvimento:
+#   máquina "app" (Nginx + Spring Boot, mesma pilha de rede)  -->  máquina "postgres"
+# O Nginx compartilha a rede do serviço app e alcança o Spring Boot em 127.0.0.1:8080.
+
+services:
+  app:
+    build: ./backend
+    environment:
+      DB_URL: jdbc:postgresql://172.28.0.20:5432/autenticacao
+      DB_USUARIO: app_autenticacao
+      DB_SENHA: ${DB_SENHA_APP:?defina DB_SENHA_APP no arquivo .env}
+    ports:
+      # As portas do Nginx são publicadas aqui, porque ele usa a rede deste serviço.
+      - "${PORTA_HTTP:-80}:80"
+      - "${PORTA_HTTPS:-443}:443"
+    networks:
+      rede_interna:
+        ipv4_address: 172.28.0.10
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:stable-alpine
+    network_mode: "service:app"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/tls:/etc/nginx/tls:ro
+      - ./frontend:/var/www/aplicacao:ro
+    depends_on:
+      - app
+
+  postgres:
+    image: postgres:18-alpine
+    command:
+      - postgres
+      - -c
+      - listen_addresses=172.28.0.20
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_DB: autenticacao
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
+      DB_SENHA_APP: ${DB_SENHA_APP:?defina DB_SENHA_APP no arquivo .env}
+    volumes:
+      - ./banco/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./banco/permissoes.sql:/docker-entrypoint-initdb.d/02-permissoes.sql:ro
+      - ./banco/seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
+      - ./banco/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    # A porta 5432 não é publicada para o host.
+    networks:
+      rede_interna:
+        ipv4_address: 172.28.0.20
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "172.28.0.20", "-U", "app_autenticacao", "-d", "autenticacao"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+networks:
+  rede_interna:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
