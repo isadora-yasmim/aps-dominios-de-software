@@ -1,0 +1,12 @@
+@startuml figura6_caso_de_uso
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+left to right direction
+actor "Usuário" as U
+rectangle "Aplicação Web de autenticação" {
+usecase "Autenticar usuário\n(RF01)" as UC1
+}
+U -- UC1
+@enduml

@@ -1,0 +1,43 @@
+@startuml figura9_autenticacao
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+participant "ControladorAutenticacao" as CTL
+participant "ServicoAutenticacao" as SRV
+participant "RepositorioUsuario" as REP
+participant "VerificadorSenha" as VER
+participant "TratadorExcecoes" as TRT
+database "SGBD\n(PostgreSQL)" as BD
+[-> CTL : POST /api/autenticacao\n{"email", "senha"} (válido)
+CTL -> SRV : autenticar(email, senha)
+SRV -> REP : buscarPorEmail(email)
+REP -> BD : SELECT id, email, nome, hash_senha\nFROM usuario WHERE email = ?
+alt usuário existe
+BD --> REP : 1 linha
+REP --> SRV : Optional com Usuario
+SRV -> VER : confere(senha, hashSenha)
+alt senha confere
+VER --> SRV : true
+SRV --> CTL : UsuarioAutenticado(id, email, nome)
+[<-- CTL : 200 OK\n{"id", "email", "nome"}
+else senha incorreta
+VER --> SRV : false
+SRV ->> TRT : lança FalhaAutenticacaoException
+[<-- TRT : 401 Unauthorized\nWWW-Authenticate: Credenciais realm="aplicacao.example"\n{"mensagem": "E-mail ou senha inválidos."}
+end
+else usuário inexistente
+BD --> REP : 0 linhas
+REP --> SRV : Optional vazio
+SRV -> VER : verificarContraHashFicticio(senha)
+note right of VER
+mesmo custo de uma
+verificação real (RNF06);
+o resultado é descartado
+end note
+VER --> SRV
+SRV ->> TRT : lança FalhaAutenticacaoException
+[<-- TRT : 401 Unauthorized\nWWW-Authenticate: Credenciais realm="aplicacao.example"\n{"mensagem": "E-mail ou senha inválidos."}
+end
+@enduml

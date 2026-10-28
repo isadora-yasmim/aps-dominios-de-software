@@ -1,0 +1,40 @@
+@startuml figura7_componentes
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+node "Máquina do usuário (navegador)" as M {
+package "Camada 1: Apresentação" as C1 {
+component "Página de login\n(HTML, CSS e JavaScript)" as PAG
+}
+}
+node "Servidor da aplicação" as S {
+component "Servidor web\n(Nginx)" as NGX
+node "Servidor de aplicação\n(Spring Boot com Tomcat)" as APP {
+package "Camada 2: Controle" as C2 {
+component "TratadorExcecoes\n(@RestControllerAdvice)" as TRT
+component "ControladorAutenticacao" as CTL
+}
+package "Camada 3: Serviço de autenticação" as C3 {
+component "ServicoAutenticacao" as SRV
+component "VerificadorSenha" as VER
+}
+package "Camada 4: Persistência" as C4 {
+component "RepositorioUsuario\n(Spring JDBC)" as REP
+}
+}
+}
+database "SGBD\n(PostgreSQL)" as DB
+PAG -down-> NGX : POST /api/autenticacao (JSON)\nHTTPS, porta 443
+NGX .up.> PAG : entrega os arquivos da página
+NGX -[hidden]right-> APP
+NGX --> CTL : repassa o pedido\nHTTP interno, porta 8080
+TRT -[hidden]down-> CTL
+CTL .up.> TRT : exceções lançadas pelo\ncontrole e pelo serviço
+CTL -down-> SRV : autentica as credenciais
+SRV -right-> VER : confere a senha\ncom o hash
+SRV -down-> REP : busca o usuário\npelo e-mail
+REP -down-> DB : SQL parametrizado\nJDBC, porta 5432
+@enduml

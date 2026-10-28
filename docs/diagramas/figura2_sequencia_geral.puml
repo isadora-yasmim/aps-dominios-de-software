@@ -1,0 +1,24 @@
+@startuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+actor "Usuário" as U
+participant "Navegador" as N
+participant "Servidor DNS" as D
+participant "Servidor web\n(Nginx)" as W
+participant "Servidor de aplicação\n(Spring Boot com Tomcat)" as A
+database "SGBD\n(PostgreSQL)" as B
+U -> N : digita o endereço ou envia o formulário
+N -> D : pergunta o IP do site
+D --> N : devolve o IP
+N -> W : abre conexão TCP e TLS
+N -> W : envia o pedido HTTP
+W -> A : repassa o pedido
+A -> B : consulta os dados
+B --> A : devolve linhas ou erro
+A --> W : monta a resposta
+W --> N : repassa a resposta
+N --> U : mostra o resultado na tela
+@enduml
