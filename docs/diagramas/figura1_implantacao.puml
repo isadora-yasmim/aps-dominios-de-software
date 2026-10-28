@@ -1,0 +1,22 @@
+@startuml
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+left to right direction
+skinparam defaultFontName Arial
+actor "Usuário" as U
+node "Máquina do usuário" as M {
+component "Navegador" as NAV
+}
+node "Servidor DNS" as DNS
+node "Servidor da aplicação" as S {
+component "Servidor web\n(Nginx)" as WEB
+component "Servidor de aplicação\n(Spring Boot com Tomcat)" as APP
+}
+database "SGBD\n(PostgreSQL)" as DB
+U --> NAV : digita o endereço\nou envia o formulário
+NAV ..> DNS : 1. descobre o IP do site
+NAV --> WEB : 2. HTTPS (TLS)\nporta 443
+WEB --> APP : 3. HTTP interno\nporta 8080
+APP --> DB : 4. SQL por JDBC\nporta 5432
+@enduml

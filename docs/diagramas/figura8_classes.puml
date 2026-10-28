@@ -1,0 +1,72 @@
+@startuml figura8_classes
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+hide empty members
+package "Camada 2: Controle" {
+class ControladorAutenticacao <<RestController>> {
+- servico : ServicoAutenticacao
++ autenticar(requisicao) : UsuarioAutenticado
+}
+class TratadorExcecoes <<RestControllerAdvice>> {
++ jsonInvalido(e) : 400
++ validacao(e) : 400
++ falhaAutenticacao(e) : 401
++ erroInesperado(e) : 4xx do Spring ou 500
+}
+}
+package "Camada 3: Serviço de autenticação" {
+class ServicoAutenticacao <<Service>> {
+- repositorio : RepositorioUsuario
+- verificador : VerificadorSenha
++ autenticar(email, senha) : UsuarioAutenticado
+}
+}
+class VerificadorSenha <<Component>> {
+- codificador : PasswordEncoder
+- hashFicticio : String
++ confere(senha, hashSenha) : boolean
++ verificarContraHashFicticio(senha) : void
+}
+class ConfiguracaoSenha <<Configuration>> {
++ codificadorSenha() : PasswordEncoder
+}
+class FalhaAutenticacaoException <<exception>>
+package "Camada 4: Persistência" {
+class RepositorioUsuario <<Repository>> {
+- jdbcTemplate : JdbcTemplate
++ buscarPorEmail(email) : Optional<Usuario>
+}
+}
+package "Modelo" {
+class RequisicaoAutenticacao <<record>> {
+email : String
+senha : String
+}
+class UsuarioAutenticado <<record>> {
+id : long
+email : String
+nome : String
+}
+class Usuario <<record>> {
+id : long
+email : String
+nome : String
+hashSenha : String
+}
+class RespostaErro <<record>> {
+mensagem : String
+}
+}
+ControladorAutenticacao -down-> ServicoAutenticacao : autenticar
+ServicoAutenticacao -down-> RepositorioUsuario : buscarPorEmail
+ServicoAutenticacao -right-> VerificadorSenha : confere
+ConfiguracaoSenha .up.> VerificadorSenha : fornece o\nPasswordEncoder
+ServicoAutenticacao ..> FalhaAutenticacaoException : lança
+TratadorExcecoes ..> FalhaAutenticacaoException : trata
+RepositorioUsuario -[hidden]down-> RequisicaoAutenticacao
+@enduml

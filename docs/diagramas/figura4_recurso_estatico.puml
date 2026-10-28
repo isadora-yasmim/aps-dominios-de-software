@@ -1,0 +1,26 @@
+@startuml figura4_recurso_estatico
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+participant "Navegador" as NAV
+participant "Servidor web\n(Nginx)" as NGINX
+database "Disco do servidor\n(/var/www/aplicacao)" as DISCO
+== Porta 80: redirecionamento ==
+NAV -> NGINX : GET http://aplicacao.example/ (TCP, porta 80)
+NGINX --> NAV : 301 Moved Permanently\nLocation: https://aplicacao.example/
+== Porta 443: recurso estático (dentro do canal TLS) ==
+NAV -> NGINX : GET / (TCP com TLS, porta 443)
+note right of NGINX
+escolhe o bloco location /
+e junta o caminho ao root
+end note
+NGINX -> DISCO : lê o arquivo
+alt arquivo existe
+DISCO --> NGINX : conteúdo do arquivo
+NGINX --> NAV : 200 OK + HTML, CSS ou JavaScript\n+ Strict-Transport-Security
+else arquivo não existe
+NGINX --> NAV : 404 Not Found
+end
+@enduml

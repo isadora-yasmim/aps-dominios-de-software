@@ -1,0 +1,43 @@
+@startuml figura5_recurso_dinamico
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+participant "Navegador" as NAV
+participant "Servidor web\n(Nginx)" as NGINX
+box "Servidor de aplicação" #FFFFFF
+participant "Tomcat\n(conector)" as CON
+participant "Dispatcher\nServlet" as DS
+participant "Código da\naplicação" as APP
+end box
+database "SGBD\n(PostgreSQL)" as BD
+NAV -> NGINX : POST /api/autenticacao\n{"email", "senha"}
+NGINX -> CON : repassa (HTTP, 127.0.0.1:8080)\n+ X-Forwarded-For e -Proto
+CON -> DS : thread entrega\nrequest e response
+DS -> DS : converte o JSON\ne valida os campos
+alt JSON malformado ou campos inválidos
+DS --> CON : 400 + JSON de erro
+else dados válidos
+DS -> APP : invoca o método\nde autenticação
+APP -> BD : SELECT ... WHERE email = ?\n(JDBC, pool, porta 5432)
+note right of BD
+backend: análise, reescrita,
+planejamento e execução
+end note
+alt consulta executada
+BD --> APP : 1 linha ou 0 linhas
+APP --> DS : 200 (dados do usuário)\nou 401 (WWW-Authenticate e\nmensagem genérica)
+else falha no SGBD
+BD --> APP : erro com código SQLSTATE
+APP --> DS : exceção tratada pelo\n@RestControllerAdvice: 500
+end
+DS --> CON : resposta convertida em JSON
+end
+CON --> NGINX : resposta HTTP
+NGINX --> NAV : resposta no canal TLS
+note over NAV, NGINX
+se o Tomcat estiver parado ou não
+responder a tempo: 502 ou 504
+end note
+@enduml

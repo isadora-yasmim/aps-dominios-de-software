@@ -1,0 +1,32 @@
+@startuml figura10_erros
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam dpi 150
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+participant "DispatcherServlet\n(Spring MVC)" as DS
+participant "ControladorAutenticacao" as CTL
+participant "ServicoAutenticacao" as SRV
+participant "RepositorioUsuario" as REP
+participant "TratadorExcecoes" as TRT
+database "SGBD\n(PostgreSQL)" as BD
+[-> DS : POST /api/autenticacao
+alt JSON malformado ou campo ausente, vazio ou com e-mail inválido (FA1)
+DS -> DS : converte o JSON e valida\n@NotBlank e @Email
+DS ->> TRT : HttpMessageNotReadableException\nou MethodArgumentNotValidException
+[<-- TRT : 400 Bad Request\n{"mensagem": "Requisição inválida."}
+note right of TRT
+o controlador e o SGBD
+não são chamados
+end note
+else SGBD indisponível ou com erro (FE1)
+DS -> CTL : autenticar(requisicao)
+CTL -> SRV : autenticar(email, senha)
+SRV -> REP : buscarPorEmail(email)
+REP -> BD : SELECT ... WHERE email = ?
+BD --> REP : erro (SQLSTATE)
+REP ->> TRT : DataAccessException
+TRT -> TRT : registra o erro\nsó no log do servidor
+[<-- TRT : 500 Internal Server Error\n{"mensagem": "Erro interno. Tente novamente mais tarde."}
+end
+@enduml
